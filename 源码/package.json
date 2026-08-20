@@ -1,0 +1,19 @@
+{
+  "name": "spy-detector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "家庭监控探测工具",
+  "license": "UNLICENSED",
+  "bin": "./spy_detector.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run build:macos:x64 && npm run build:macos:arm64",
+    "build:macos:x64": "pkg . --targets node18-macos-x64 --output ../dist/spy_detector_mac_x64",
+    "build:macos:arm64": "pkg . --targets node18-macos-arm64 --output ../dist/spy_detector_mac_arm64"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "6.5.1"
+  }
+}
