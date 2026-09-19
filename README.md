@@ -1,150 +1,150 @@
-# NETRUNNER 本地安全数据分析系统（macOS）
+# NETRUNNER — Local Security Data Analysis System (macOS)
 
-NETRUNNER 用于你自己拥有或已获得书面授权的网络与设备。它不再只是“一次扫描、打印一次报告”的脚本，而是一个以**采集、持久化、历史比较和可解释威胁评分**为中心的本地分析系统。
+NETRUNNER is for networks and devices that you own or have written authorization to test. It is no longer just a "run one scan, print one report" script, but a local analysis system centered on **collection, persistence, historical comparison, and explainable threat scoring**.
 
-系统统一接收以下数据：
+The system accepts the following data through a unified pipeline:
 
-- ARP 与 Socket 常见端口探测；
-- 周边网络设备、WiFi 与蓝牙观测；
-- Nmap 结构化 XML；
-- Masscan JSON；
-- Nikto 结构化漏洞；
-- TheHarvester OSINT；
-- 可选的 Java、C/C++ 或其它本地可执行分析后端。
+- ARP and Socket common-port probing;
+- Nearby network devices, WiFi, and Bluetooth observations;
+- Nmap structured XML;
+- Masscan JSON;
+- Nikto structured vulnerabilities;
+- TheHarvester OSINT;
+- Optional Java, C/C++, or other local executable analysis backends.
 
-> 威胁度是排查优先级，不等同于已确认入侵或漏洞。未采集到开放端口、WiFi 或蓝牙数据，也不等于已证明安全。
+> The threat score is a triage priority; it is not a confirmed intrusion or vulnerability. Absence of collected open ports, WiFi, or Bluetooth data is not proof of security either.
 
-## 使用限制
+## Usage Restrictions
 
-- 仅用于你拥有或已获**书面授权**的网络、域名和设备。
-- `full` 模式面向明确授权的 IPv4，可能运行全端口 Nmap、Masscan 和 Nikto，影响明显高于家庭档位；域名 OSINT 使用显式 TheHarvester 子命令。
-- 不要对未经授权的第三方网络或公网目标执行扫描。
-- 网络方法只能发现联网或发射信号的设备；离线 SD 卡摄像头仍需要物理检查。
+- Only use on networks, domains, and devices that you own or have **written authorization** for.
+- The `full` mode targets explicitly authorized IPv4 and may run full-port Nmap, Masscan, and Nikto, with noticeably higher impact than the home tier; domain OSINT uses an explicit TheHarvester subcommand.
+- Do not scan unauthorized third-party networks or public internet targets.
+- Network methods can only discover devices that are online or emitting signals; offline SD-card cameras still require physical inspection.
 
-## 数据架构
+## Data Architecture
 
 ```mermaid
 flowchart TD
-    A[ARP / Socket] --> I[统一事件与资产身份]
-    B[Node.js WiFi / 蓝牙 / 网络] -->|JSONL| I
+    A[ARP / Socket] --> I[Unified events and asset identity]
+    B[Node.js WiFi / Bluetooth / network] -->|JSONL| I
     C[Nmap XML] --> I
     D[Masscan JSON] --> I
     E[Nikto JSON] --> I
     F[TheHarvester] --> I
-    I --> R[原始证据 data/raw]
-    I --> S[SQLite 规范化数据 data/monitor.db]
-    S --> H[历史基线与变化分析]
-    H --> P[Python 内置可解释评分]
-    H --> X[可选 Java / C / C++ 分析器]
-    P --> O[0-10 威胁度与因素]
+    I --> R[Raw evidence data/raw]
+    I --> S[SQLite normalized data data/monitor.db]
+    S --> H[Historical baseline and change analysis]
+    H --> P[Python built-in explainable scoring]
+    H --> X[Optional Java / C / C++ analyzers]
+    P --> O[0-10 threat score and factors]
     X --> O
 ```
 
-### 三层数据
+### Three Data Layers
 
-1. **原始证据**：`data/raw/<日期>/<run-id>/`
-   - 保存采集器原始 JSON、JSONL、XML 解析结果和诊断文本。
-   - 身份规范化迁移不会修改这些原始文件。
-2. **SQLite 规范化核心**：`data/monitor.db`
-   - 扫描批次、逐采集通道完成状态、长期资产、身份别名、观测、开放服务、漏洞发现和威胁分。
-3. **JSON 扩展属性**
-   - 保存不同采集器的专有字段，避免为了每个工具频繁改表。
+1. **Raw evidence**: `data/raw/<date>/<run-id>/`
+   - Stores the collectors' original JSON, JSONL, XML parsing results, and diagnostic text.
+   - Identity normalization migrations do not modify these raw files.
+2. **SQLite normalized core**: `data/monitor.db`
+   - Scan batches, per-channel completion status, long-term assets, identity aliases, observations, open services, vulnerability findings, and threat scores.
+3. **JSON extension attributes**
+   - Stores collector-specific fields, avoiding frequent table changes for each tool.
 
-SQLite 只由 Python 写入，避免多个语言同时写数据库导致锁竞争或数据格式分裂。Java/C/C++ 分析器通过 stdin/stdout JSON 合约运行。
+SQLite is written only by Python, avoiding lock contention or data format splits caused by multiple languages writing the database simultaneously. Java/C/C++ analyzers run through a stdin/stdout JSON contract.
 
-## 身份与历史基线
+## Identity and Historical Baseline
 
-- 网络设备优先使用 MAC 作为长期身份。
-- WiFi 优先使用 BSSID，蓝牙优先使用设备地址。
-- 同一条可信观测同时含 MAC 和 IP 时，系统把 IP 登记为该 MAC 资产的别名，以便 Nmap/Nikto 结果关联到同一设备。
-- 不会仅凭厂商、名称或 SSID 相似度自动合并资产。
-- macOS ARP 的短 MAC（如 `0:1a:eb:a6:4a:60`）会规范化为 `00:1A:EB:A6:4A:60`。
-- 组播地址不会作为长期设备资产。
-- 默认与最近一个相同范围、成功或部分成功的批次比较，也可以设置固定基线。
+- Network devices use the MAC address as the long-term identity by default.
+- WiFi uses the BSSID, and Bluetooth uses the device address.
+- When a single trusted observation contains both MAC and IP, the system registers the IP as an alias of that MAC asset so that Nmap/Nikto results can be correlated to the same device.
+- Assets are never merged automatically based on vendor, name, or SSID similarity alone.
+- macOS ARP short MACs (e.g. `0:1a:eb:a6:4a:60`) are normalized to `00:1A:EB:A6:4A:60`.
+- Multicast addresses are not stored as long-term device assets.
+- By default, comparison is against the most recent batch with the same scope that succeeded or partially succeeded; you can also set a fixed baseline.
 
-## 威胁分析依据
+## Threat Analysis Basis
 
-每个资产生成 `0–10` 分、等级、置信度和可解释因素。当前内置模型综合：
+Each asset receives a `0–10` score, a level, a confidence, and explainable factors. The current built-in model combines:
 
-- 敏感开放端口，例如 Telnet、SMB、RTSP、RDP、Redis、MongoDB；
-- 相比历史基线新开放的敏感端口；
-- 新出现的资产；
-- Nikto 结构化漏洞严重度；
-- 采集器的可疑厂商、名称或信号规则；
-- 同一敏感端口的历史持续暴露；
-- 独立证据通道数量，而不是简单把两个相似采集器当作完全独立证据；
-- 历史重复次数和结构化漏洞证据。
+- Sensitive open ports, e.g. Telnet, SMB, RTSP, RDP, Redis, MongoDB;
+- Sensitive ports newly opened compared to the historical baseline;
+- Newly appearing assets;
+- Nikto structured vulnerability severity;
+- Collector heuristics on suspicious vendors, names, or signals;
+- Historical sustained exposure of the same sensitive port;
+- The number of independent evidence channels, rather than simply treating two similar collectors as fully independent evidence;
+- Historical repetition counts and structured vulnerability evidence.
 
-报告同时包含 `data_quality`：
+Reports also include `data_quality`:
 
-- 请求了哪些采集器，以及每个通道是 `success`、`skipped`、执行失败还是协议失败；
-- 哪些采集器实际产生了结构化观测；
-- `coverage_ratio`：成功完成的通道占比，成功零对象也算采集成功；
-- `observation_coverage_ratio`：真正产生结构化观测的通道占比；
-- 哪些通道成功但为零对象，以及开放服务记录数量；
-- 权限不足、未发现对象或采集失败可能造成的数据盲区。
+- Which collectors were requested, and whether each channel is `success`, `skipped`, execution-failed, or protocol-failed;
+- Which collectors actually produced structured observations;
+- `coverage_ratio`: the share of channels that completed successfully; collecting zero objects still counts as success;
+- `observation_coverage_ratio`: the share of channels that actually produced structured observations;
+- Which channels succeeded with zero objects, and the number of open-service records;
+- Data blind spots that may be caused by insufficient permissions, no objects found, or collection failures.
 
-## 快速开始
+## Quick Start
 
-1. 双击 `环境检查.command`。主流程要求 **Python 3** 和 **Node.js 18+**；Nmap、Masscan、Nikto、TheHarvester 会按 `quick`、`full`、OSINT 用途分别标为扩展依赖。
-2. 双击 `启动器.command`。
-3. 主菜单优先提供：
-   - 家庭全量采集与威胁分析；
-   - 指定目标快速综合分析；
-   - 指定授权 IPv4 的完整综合分析；
-   - 最新威胁报告；
-   - 历史变化；
-   - 扫描历史。
+1. Double-click `环境检查.command` (environment check). The main flow requires **Python 3** and **Node.js 18+**; Nmap, Masscan, Nikto, and TheHarvester are marked as extended dependencies for `quick`, `full`, and OSINT use respectively.
+2. Double-click `启动器.command` (launcher).
+3. The main menu prioritizes:
+   - Full home collection and threat analysis;
+   - Quick combined analysis of a specified target;
+   - Full combined analysis of a specified authorized IPv4;
+   - Latest threat report;
+   - Historical changes;
+   - Scan history.
 
-## 统一命令行
+## Unified CLI
 
 ```bash
-# 真实家庭档位：ARP/Socket + Node 网络/WiFi/蓝牙，自动保存
+# Real home tier: ARP/Socket + Node network/WiFi/Bluetooth, auto-saved
 python3 source/netrunner.py collect --profile home
 
-# 指定授权目标：家庭采集 + Nmap
+# Specified authorized target: home collection + Nmap
 python3 source/netrunner.py collect --profile quick --target 192.168.1.20
 
-# 指定已书面授权的 IP：Nmap/Masscan/Nikto 深度采集
+# Specified written-authorized IP: deep Nmap/Masscan/Nikto collection
 python3 source/netrunner.py collect --profile full --target 192.0.2.25
 
-# 授权域名的公开信息收集应显式选择 TheHarvester，不把域名示例写成 Masscan 目标
+# Public information collection for an authorized domain should explicitly choose TheHarvester; do not write domain examples as Masscan targets
 python3 source/recon.py authorized.example --type theharvester --domain authorized.example
 
-# 只分析本次，不污染正式历史库
+# Analyze this run only, without polluting the official history database
 python3 source/netrunner.py collect --profile home --no-store
 
-# stdout 仅输出 JSON；采集日志进入 stderr
+# stdout outputs JSON only; collection logs go to stderr
 python3 source/netrunner.py collect --profile home --json
 
-# 查看历史与报告
+# View history and reports
 python3 source/netrunner.py history
 python3 source/netrunner.py report
 python3 source/netrunner.py report --run-id <run-id>
 python3 source/netrunner.py changes
 python3 source/netrunner.py changes --run-id <run-id> --baseline <baseline-run-id>
 
-# 设置同范围扫描的固定基线
+# Set a fixed baseline for same-scope scans
 python3 source/netrunner.py baseline <run-id>
 
-# 显式登记受控身份别名
+# Explicitly register a controlled identity alias
 python3 source/netrunner.py alias <asset-id> ip 192.168.1.20
 ```
 
-## 采集档位权衡
+## Collection Tier Trade-offs
 
-| 档位 | 数据源 | 优点 | 代价与限制 |
+| Tier | Data sources | Strengths | Costs and limits |
 |---|---|---|---|
-| `home` | ARP/Socket、网络、WiFi、蓝牙 | 适合重复运行和建立家庭历史基线 | 端口范围较小；WiFi/蓝牙可能受 macOS 权限和系统接口限制 |
-| `quick` | `home` + Nmap | 服务识别更可靠，适合调查单个授权目标 | 扫描更明显，运行时间更长 |
-| `full` | `quick` + Masscan/Nikto | 对明确授权的 IP 做更深端口与 Web 检查 | 时间最长、网络影响最大；不要把域名直接当作 Masscan 示例或默认目标 |
-| 显式 OSINT | TheHarvester | 收集获授权域名的公开信息 | 只处理域名；在高级入口使用明确的 `--type theharvester` |
+| `home` | ARP/Socket, network, WiFi, Bluetooth | Suitable for repeated runs and building a home history baseline | Smaller port range; WiFi/Bluetooth may be limited by macOS permissions and system interfaces |
+| `quick` | `home` + Nmap | More reliable service identification, suitable for investigating a single authorized target | More visible scans, longer runtime |
+| `full` | `quick` + Masscan/Nikto | Deeper port and web checks for explicitly authorized IPs | Longest runtime, highest network impact; do not use domains directly as Masscan examples or default targets |
+| Explicit OSINT | TheHarvester | Collect public information for authorized domains | Handles domains only; use the explicit `--type theharvester` in the advanced entry |
 
-推荐先连续运行 `home` 建立正常历史，再对高优先级设备使用 `quick`。`full` 只用于明确授权 IP 的深度调查；域名 OSINT 使用显式的 TheHarvester 子命令，避免把“公开情报”入口误解为主动全套扫描。
+The recommended flow is to run `home` continuously first to establish a normal baseline, then use `quick` for high-priority devices. `full` is only for deep investigation of explicitly authorized IPs; domain OSINT uses the explicit TheHarvester subcommand to avoid mistaking the "public intelligence" entry for an active full scan.
 
-## Java / C / C++ 外部分析后端
+## Java / C / C++ External Analysis Backends
 
-设置 `NETRUNNER_ANALYZER_CMD` 后，每次采集完成和重新生成报告时都会尝试调用外部分析器：
+After setting `NETRUNNER_ANALYZER_CMD`, the external analyzer is invoked on every collection completion and report regeneration:
 
 ```bash
 NETRUNNER_ANALYZER_CMD="java -jar analyzer.jar" \
@@ -155,16 +155,16 @@ NETRUNNER_ANALYZER_TIMEOUT=180 \
 python3 source/netrunner.py collect --profile home
 ```
 
-执行合约：
+Execution contract:
 
-1. 命令由 `shlex.split()` 解析，不经过 shell。
-2. stdin 收到 UTF-8 JSON：
-   - `contract_version`；
-   - 扫描批次 `run`；
-   - 历史变化 `changes`；
-   - 资产、观测与服务 `assets`；
-   - Python 内置结果 `built_in_analysis`，可用于混合模型或回退参考。
-3. stdout 必须只包含一个 JSON 对象，至少提供：
+1. The command is parsed with `shlex.split()`, not through a shell.
+2. stdin receives UTF-8 JSON:
+   - `contract_version`;
+   - The scan batch `run`;
+   - Historical changes `changes`;
+   - Assets, observations, and services `assets`;
+   - The Python built-in results `built_in_analysis`, usable for hybrid models or fallback reference.
+3. stdout must contain exactly one JSON object providing at least:
 
 ```json
 {
@@ -174,43 +174,43 @@ python3 source/netrunner.py collect --profile home
 }
 ```
 
-4. `overall_score` 必须位于 `0–10`，`overall_level` 只允许 `none/low/medium/high/critical`，且必须与分数阈值一致；`assets` 必须是数组。
-5. 资产输出遵守严格的“只分析既有资产”增量契约：
-   - 只能引用 stdin `assets` 中已有的正整数 `asset_id`，不能发明新资产、重复 ID、修改身份或伪造采集证据；
-   - stdin `changes` 是 Python 根据历史库生成的资产/端口增量事实，外部分析器应消费这些事实，而不是把一次未观测到对象直接解释为资产消失；
-   - 外部 `assets` 是按 `asset_id` 应用的增量补丁；未返回的资产保留 Python 内置结果，返回空数组也不会删除资产；
-   - 每个补丁可覆盖 `score`、`level`、`confidence`、`factors`、`label`。分数、等级、置信度和因素结构会被严格校验，未知或重复 `asset_id` 会触发整体回退；
-   - 合并后的最终资产分数会写回 `threat_scores`，使当前报告与数据库中的最终排序一致。
-6. 外部进程超时、退出非零、输出非 JSON 或缺字段时，系统不会丢失报告，而是回退到 Python 内置分析，并在 `backend_warning` 中说明原因。
-7. stderr 会记录在 `analysis_backend.stderr`，不要把日志写入 stdout。
+4. `overall_score` must be within `0–10`, `overall_level` only allows `none/low/medium/high/critical` and must match the score thresholds; `assets` must be an array.
+5. Asset output follows a strict "analyze existing assets only" incremental contract:
+   - You may only reference positive-integer `asset_id`s that already exist in stdin `assets`; do not invent new assets, duplicate IDs, modify identities, or fabricate collection evidence;
+   - stdin `changes` are asset/port incremental facts generated by Python from the history database; external analyzers should consume these facts rather than interpreting a single no-observation run directly as asset disappearance;
+   - External `assets` are incremental patches applied by `asset_id`; assets not returned keep the Python built-in results, and returning an empty array does not delete assets;
+   - Each patch may override `score`, `level`, `confidence`, `factors`, and `label`. Score, level, confidence, and factor structures are strictly validated; unknown or duplicate `asset_id`s trigger a full fallback;
+   - The merged final asset scores are written back to `threat_scores`, keeping the current report consistent with the final ranking in the database.
+6. When the external process times out, exits non-zero, outputs non-JSON, or lacks fields, the system does not lose the report; it falls back to the Python built-in analysis and explains the reason in `backend_warning`.
+7. stderr is recorded in `analysis_backend.stderr`; do not write logs to stdout.
 
-这种设计允许未来用 Java 实现大规模规则图、用 C/C++ 实现高性能特征聚合，同时保留 Python 编排、SQLite 存储和旧 CLI 兼容性。
+This design allows implementing large-scale rule graphs in Java or high-performance feature aggregation in C/C++ in the future, while keeping Python orchestration, SQLite storage, and old CLI compatibility.
 
-## Node.js 独立采集器与 JSONL
+## Node.js Standalone Collector and JSONL
 
-`源码/spy_detector.js` 要求 Node.js 18+。命令执行使用 `shell:false` 与参数数组；命令超时、启动失败、非零退出和解析失败不会被伪装成“成功但零对象”。
+`源码/spy_detector.js` requires Node.js 18+. Command execution uses `shell:false` with an argument array; command timeouts, startup failures, non-zero exits, and parse failures are never disguised as "success with zero objects".
 
 ```bash
-# 人类可读模式
+# Human-readable mode
 node 源码/spy_detector.js --network
 
-# stdout 只含 JSONL；诊断与人类日志进入 stderr
+# stdout contains JSONL only; diagnostics and human logs go to stderr
 node 源码/spy_detector.js --jsonl --run-id <run-id>
 ```
 
-JSONL 包含两类记录：
+JSONL contains two kinds of records:
 
-- 观测记录：保留 `source`、`kind: "observation"`、`identity` 和 `attributes`，可进入资产存储；
-- 采集器状态记录：使用 `event_type: "collector_status"` 或 `event_type: "collector_complete"`，**不带 `identity`，也不伪装成 observation**。完成事件的 `status` 区分：
-  - `success`：命令与解析成功；`object_count: 0`、`zero_objects: true` 表示可信的成功零对象；
-  - `command_failed`：启动失败、超时或非零退出，并可带 `return_code`、`timed_out`、`stderr`；
-  - `parse_failed`：命令成功但结构化输出无法解析。
+- Observation records: keep `source`, `kind: "observation"`, `identity`, and `attributes`; they can enter asset storage;
+- Collector status records: use `event_type: "collector_status"` or `event_type: "collector_complete"`, **without `identity`, and never disguised as observations**. The `status` of completion events distinguishes:
+  - `success`: command and parsing succeeded; `object_count: 0` with `zero_objects: true` means a trusted success-with-zero-objects;
+  - `command_failed`: startup failure, timeout, or non-zero exit, possibly with `return_code`, `timed_out`, `stderr`;
+  - `parse_failed`: the command succeeded but the structured output could not be parsed.
 
-`source/netrunner.py` 会流式读取 stdout，先按 `event_type` 路由状态记录，只把真正的观测记录送入资产入库；同时校验 `run_id`、每个请求通道的 `collector_status`/`collector_complete`、对象计数、重复/未知事件和 Node 退出码。超时时会终止进程，但保留并解析超时前已经输出的 JSONL 与 stderr。完成状态写入 SQLite `collector_results`，供批次状态和后续报告使用。`--help` 的帮助文字写入 stderr，stdout 保持为空；未知参数退出码为 `2`。
+`source/netrunner.py` reads stdout in streaming mode, routes status records by `event_type` first, and only sends genuine observation records into asset storage; it also validates `run_id`, the `collector_status`/`collector_complete` of each requested channel, object counts, duplicate/unknown events, and the Node exit code. On timeout it terminates the process but keeps and parses the JSONL and stderr already output before the timeout. Completion statuses are written to SQLite `collector_results` for batch status and later reports. The `--help` text is written to stderr, and stdout stays empty; unknown arguments exit with code `2`.
 
-## 构建与 `dist/` 限制
+## Build and `dist/` Limitations
 
-`源码/package.json` 固定声明 Node.js 18+ 和 `@yao-pkg/pkg` 构建依赖。构建会分别生成启动器约定的架构文件：
+`源码/package.json` pins Node.js 18+ and the `@yao-pkg/pkg` build dependency. The build generates the architecture-specific files required by the launcher contract:
 
 ```bash
 cd 源码
@@ -220,13 +220,13 @@ npm run build
 # ../dist/spy_detector_mac_arm64
 ```
 
-- `dist/` 产物按 `x86_64` / `arm64` 区分，不能跨架构运行；仓库中是否已有某个文件不代表两个架构都已构建或已验证。
-- 预编译文件可能受执行位、签名、公证和 Gatekeeper 策略影响；启动器会报告这些诊断，但不会绕过系统或组织策略。
-- 这些二进制只封装独立 Node.js 采集器，不包含 Python 数据平台，也**不能替代主流程对 Python 3 与 Node.js 18+ 的要求**。
+- `dist/` artifacts are split by `x86_64` / `arm64` and cannot run cross-architecture; whether a file already exists in the repo does not mean both architectures have been built or verified.
+- Precompiled files may be affected by execute bits, signing, notarization, and Gatekeeper policies; the launcher reports these diagnostics but does not bypass system or organization policies.
+- These binaries only wrap the standalone Node.js collector; they do not include the Python data platform and **cannot replace the main flow's requirement for Python 3 and Node.js 18+**.
 
-## 旧入口兼容
+## Legacy Entry Compatibility
 
-以下入口仍可使用，默认也会写入统一历史数据库：
+The following entries still work and also write to the unified history database by default:
 
 ```bash
 python3 source/audit_engine.py
@@ -234,18 +234,18 @@ python3 source/penetration_test.py 192.168.1.20 --quick
 python3 source/recon.py 192.168.1.20 --type nmap
 ```
 
-它们支持 `--no-store`；渗透测试和侦察入口也支持 `--json`。新的主流程建议使用 `source/netrunner.py`。
+They support `--no-store`; the penetration-testing and reconnaissance entries also support `--json`. New work should use the main flow `source/netrunner.py`.
 
-## 目录结构
+## Directory Structure
 
 ```text
-监控探测/
+netrunner-security-monitor/
 ├── README.md
 ├── 启动器.command
 ├── 环境检查.command
 ├── data/
 │   ├── monitor.db
-│   └── raw/<日期>/<run-id>/
+│   └── raw/<date>/<run-id>/
 ├── dist/
 │   ├── spy_detector_mac_x64
 │   └── spy_detector_mac_arm64
@@ -266,9 +266,9 @@ python3 source/recon.py 192.168.1.20 --type nmap
     └── spy_detector.js
 ```
 
-## 测试与静态检查
+## Tests and Static Checks
 
-离线测试不会连接任何扫描目标：
+Offline tests never connect to any scan target:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -278,10 +278,10 @@ bash -n 启动器.command
 bash -n 环境检查.command
 ```
 
-## 已知限制
+## Known Limitations
 
-- 首个可比批次没有历史基线，因此不会把所有资产自动计为“新增”。从第二个相同范围批次开始才有变化意义。
-- WiFi 和蓝牙受 macOS 版本、系统接口、定位/蓝牙权限影响；报告会把没有产生观测的通道列为数据质量提示。
-- ARP 表可能包含企业网络、VPN、热点或虚拟网络中的大量邻居，不一定都是家庭物理设备。
-- 端口开放是暴露事实，不自动等于漏洞；Nikto 等扫描器的结果也需要人工复核。
-- 当前内置评分是可解释规则模型，不是入侵检测机器学习模型。外部后端可用于更复杂的统计、图分析或模型推理。
+- The first comparable batch has no historical baseline, so assets are not automatically counted as "new" yet. Changes only become meaningful from the second same-scope batch onward.
+- WiFi and Bluetooth are affected by macOS versions, system interfaces, and location/Bluetooth permissions; the report lists channels that produced no observations as data-quality hints.
+- The ARP table may contain many neighbors from corporate networks, VPNs, hotspots, or virtual networks, not all of which are physical home devices.
+- An open port is an exposure fact, not automatically a vulnerability; scanner results such as Nikto also need manual review.
+- The current built-in scoring is an explainable rule model, not an intrusion-detection machine-learning model. External backends can be used for more complex statistics, graph analysis, or model inference.
