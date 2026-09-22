@@ -1,5 +1,7 @@
 # NETRUNNER — Local Security Data Analysis System (macOS)
 
+![NETRUNNER 示例输出（隐私字段已脱敏）](./docs/screenshot.png)
+
 NETRUNNER is for networks and devices that you own or have written authorization to test. It is no longer just a "run one scan, print one report" script, but a local analysis system centered on **collection, persistence, historical comparison, and explainable threat scoring**.
 
 The system accepts the following data through a unified pipeline:
